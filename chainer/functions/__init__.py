@@ -33,6 +33,7 @@ from chainer.functions.connection import linear
 from chainer.functions.evaluation import accuracy
 from chainer.functions.evaluation import binary_accuracy
 from chainer.functions.loss import contrastive
+from chainer.functions.loss import crf1d
 from chainer.functions.loss import cross_covariance
 from chainer.functions.loss import ctc
 from chainer.functions.loss import hinge
@@ -50,6 +51,7 @@ from chainer.functions.math import exponential
 from chainer.functions.math import identity
 from chainer.functions.math import inv
 from chainer.functions.math import linear_interpolate
+from chainer.functions.math import logsumexp
 from chainer.functions.math import matmul
 from chainer.functions.math import minmax
 from chainer.functions.math import sum
@@ -147,6 +149,7 @@ bernoulli_nll = vae.bernoulli_nll
 BinaryHierarchicalSoftmax = hierarchical_softmax.BinaryHierarchicalSoftmax
 Contrastive = contrastive.Contrastive
 contrastive = contrastive.contrastive
+crf1d = crf1d.crf1d
 CrossCovariance = cross_covariance.CrossCovariance
 cross_covariance = cross_covariance.cross_covariance
 gaussian_kl_divergence = vae.gaussian_kl_divergence
@@ -167,6 +170,8 @@ BatchDet = det.BatchDet
 batch_det = det.batch_det
 BatchInv = inv.BatchInv
 batch_inv = inv.batch_inv
+LogSumExp = logsumexp.LogSumExp
+logsumexp = logsumexp.logsumexp
 BatchL2NormSquared = batch_l2_norm_squared.BatchL2NormSquared
 batch_l2_norm_squared = batch_l2_norm_squared.batch_l2_norm_squared
 BatchMatMul = matmul.BatchMatMul
