@@ -21,6 +21,7 @@ class BatchNormalizationFunction(function.Function):
         type_check.expect(
             x_type.dtype.kind == 'f',
             x_type.ndim >= gamma_type.ndim + 1,
+            x_type.shape[1] == gamma_type.shape[0],
             # TODO(beam2d): Check shape
             gamma_type.dtype == x_type.dtype,
             beta_type.dtype == x_type.dtype,
