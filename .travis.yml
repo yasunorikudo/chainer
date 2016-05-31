@@ -60,4 +60,5 @@ sudo: false
 addons:
   apt:
     packages:
+      - libopenblas-dev
       - libhdf5-serial-dev
