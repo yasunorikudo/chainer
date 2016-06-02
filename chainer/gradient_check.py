@@ -1,3 +1,5 @@
+import six
+
 import numpy
 
 from chainer import cuda
@@ -93,7 +95,7 @@ def _as_tuple(x):
 
 
 def check_backward(func, x_data, y_grad, params=(),
-                   eps=1e-3, atol=1e-5, rtol=1e-4):
+                   eps=1e-3, atol=1e-5, rtol=1e-4, dtype=None):
     """Test backward procedure of a given function.
 
     This function automatically check backward-process of given function.
@@ -184,6 +186,8 @@ def check_backward(func, x_data, y_grad, params=(),
             :func:`assert_allclose`.
         rtol (float): Relative tolerance to be passed to
             :func:`assert_allclose`.
+        dtype (~numpy.dtype): `x_data` and `y_grad` are casted to this dtype
+            when calculating numerical gradients.
 
     See:
        :func:`numerical_grad`
@@ -209,7 +213,7 @@ def check_backward(func, x_data, y_grad, params=(),
         if len(y) != len(y_grad):
             raise ValueError(
                 '`y_grad` must have the same length of output values')
-        for iy, igy in zip(y, y_grad):
+        for iy, igy in six.moves.zip(y, y_grad):
             iy.grad = igy
     else:
         if len(y) != 1:
@@ -222,16 +226,24 @@ def check_backward(func, x_data, y_grad, params=(),
     # `Variable.backward` method calls `Function.backward` of its creator.
     y[0].backward()
 
+    if dtype is None:
+        cxs = [variable.Variable(x) for x in x_data]
+    else:
+        if len(params) > 0:
+            raise ValueError('`dtype` is available only if `params` is empty')
+        cxs = [variable.Variable(x.astype(dtype) if x.dtype.kind == 'f' else x)
+               for x in x_data]
+
     def f():
-        ys = func(*xs)
+        ys = func(*cxs)
         ys = _as_tuple(ys)
         return tuple(y.data for y in ys)
 
-    for x in xs:
+    for x, cx in six.moves.zip(xs, cxs):
         if x.data.dtype.kind == 'f':
-            gx, = numerical_grad(f, (x.data,), y_grad, eps=eps)
+            gx, = numerical_grad(f, (cx.data,), y_grad, eps=eps)
             assert_allclose(gx, x.grad, atol=atol, rtol=rtol)
-            assert gx.dtype is x.grad.dtype
+            assert dtype is None or gx.dtype.kind != 'f' or gx.dtype == dtype
         else:
             assert x.grad is None
 
