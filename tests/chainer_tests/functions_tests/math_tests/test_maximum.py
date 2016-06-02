@@ -40,7 +40,7 @@ class TestMaximum(unittest.TestCase):
         x1 = chainer.Variable(x1_data)
         x2 = chainer.Variable(x2_data)
         y = functions.maximum(x1, x2)
-        gradient_check.assert_allclose(
+        testing.assert_allclose(
             y_expected, y.data, **self.check_forward_options)
 
     @condition.retry(3)

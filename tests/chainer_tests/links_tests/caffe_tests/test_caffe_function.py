@@ -939,7 +939,7 @@ class TestScaleFunction(unittest.TestCase):
         x1 = chainer.Variable(x1_data)
         x2 = chainer.Variable(x2_data)
         y = caffe.caffe_function._scale(x1, x2, axis)
-        gradient_check.assert_allclose(y_expected, y.data)
+        testing.assert_allclose(y_expected, y.data)
 
     def test_forward_cpu(self):
         self.check_forward(self.x1, self.x2, self.axis, self.y_expected)
@@ -1019,11 +1019,11 @@ class TestScaleChain(unittest.TestCase):
         x = chainer.Variable(x_data)
         if W_data is None:
             y = self.link(x)
-            gradient_check.assert_allclose(y_expected, y.data)
+            testing.assert_allclose(y_expected, y.data)
         else:
             W = chainer.Variable(W_data)
             y = self.link(x, W)
-            gradient_check.assert_allclose(y_expected, y.data)
+            testing.assert_allclose(y_expected, y.data)
 
     def test_forward_cpu(self):
         if self.learn_W:
@@ -1115,7 +1115,7 @@ class TestBiasFunction(unittest.TestCase):
         x1 = chainer.Variable(x1_data)
         x2 = chainer.Variable(x2_data)
         y = caffe.caffe_function._bias(x1, x2, axis)
-        gradient_check.assert_allclose(y_expected, y.data)
+        testing.assert_allclose(y_expected, y.data)
 
     def test_forward_cpu(self):
         self.check_forward(self.x1, self.x2, self.axis, self.y_expected)
@@ -1182,11 +1182,11 @@ class TestBiasLink(unittest.TestCase):
         x = chainer.Variable(x_data)
         if b_data is None:
             y = self.link(x)
-            gradient_check.assert_allclose(y_expected, y.data)
+            testing.assert_allclose(y_expected, y.data)
         else:
             b = chainer.Variable(b_data)
             y = self.link(x, b)
-            gradient_check.assert_allclose(y_expected, y.data)
+            testing.assert_allclose(y_expected, y.data)
 
     def test_forward_cpu(self):
         if self.learn_b:
