@@ -31,7 +31,8 @@ def _pair(x):
 
 class DilatedConvolution2DFunction(function.Function):
 
-    def __init__(self, stride=1, pad=0, use_cudnn=True, cover_all=False):
+    def __init__(self, dilate=1, stride=1, pad=0, use_cudnn=True, cover_all=False):
+        self.dy, self.dx = _pair(dilate)
         self.sy, self.sx = _pair(stride)
         self.ph, self.pw = _pair(pad)
         self.use_cudnn = use_cudnn
@@ -63,9 +64,22 @@ class DilatedConvolution2DFunction(function.Function):
         x, W = inputs[:2]
         b = inputs[2] if len(inputs) == 3 else None
         kh, kw = W.shape[2:]
+
+        # TODO(yasunorikudo): Dilate W efficiently
+        if not self.dy == 1:
+            for i in range(self.dy - 1):
+                seq_h = numpy.arange(1, kh) if i == 0 else numpy.dstack((seq_h, numpy.arange(1, kh)))
+            seq_h = seq_h.reshape((self.dy - 1) * (kh - 1))
+            W = numpy.insert(W, seq_h, numpy.zeros(kw), axis=2)
+        if not self.dx == 1:
+            for i in range(self.dx - 1):
+                seq_w = numpy.arange(1, kw) if i == 0 else numpy.dstack((seq_w, numpy.arange(1, kw)))
+            seq_w = seq_w.reshape((self.dx - 1) * (kw - 1))
+            W = numpy.insert(W, seq_w, 0, axis=3)
+
         self.col = conv.im2col_cpu(
-            x, kh, kw, self.sy, self.sx, self.ph, self.pw,
-            cover_all=self.cover_all)
+            x, kh + (kh - 1) * (self.dy - 1), kw + (kw - 1) * (self.dx - 1),
+            self.sy, self.sx, self.ph, self.pw, cover_all=self.cover_all)
         y = numpy.tensordot(
             self.col, W, ((1, 2, 3), (1, 2, 3))).astype(x.dtype)
         if b is not None:
@@ -248,7 +262,7 @@ class DilatedConvolution2DFunction(function.Function):
             return gx, gW, gb
 
 
-def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
+def dilated_convolution_2d(x, W, b=None, dilate=1, stride=1, pad=0, use_cudnn=True,
                    cover_all=False):
     """Two-dimensional convolution function.
 
@@ -309,7 +323,7 @@ def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
     .. seealso:: :class:`Convolution2D`
 
     """
-    func = DilatedConvolution2DFunction(stride, pad, use_cudnn, cover_all)
+    func = DilatedConvolution2DFunction(dilate, stride, pad, use_cudnn, cover_all)
     if b is None:
         return func(x, W)
     else:
