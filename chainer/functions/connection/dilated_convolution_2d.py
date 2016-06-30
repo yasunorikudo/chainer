@@ -68,9 +68,7 @@ class DilatedConvolution2DFunction(function.Function):
 
         self.col = conv.im2col_cpu(
             x, dkh, dkw, self.sy, self.sx, self.ph, self.pw,
-            cover_all=self.cover_all)
-        self.col = self.col[:, :, 0:dkh:self.dy, 0:dkw:self.dx, :, :]
-        # self.col = self.col[:, :, :, 0:dkw:self.dx, :, :]
+            cover_all=self.cover_all)[:, :, 0:dkh:self.dy, 0:dkw:self.dx, :, :]
         y = numpy.tensordot(
             self.col, W, ((1, 2, 3), (1, 2, 3))).astype(x.dtype)
         if b is not None:
