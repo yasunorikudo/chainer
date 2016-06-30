@@ -149,6 +149,19 @@ class DilatedConvolution2DFunction(function.Function):
         b = inputs[2] if len(inputs) == 3 else None
         gy = grad_outputs[0]
         h, w = x.shape[2:]
+        kh, kw = W.shape[2:]
+
+        # TODO(yasunorikudo): Dilate W efficiently
+        if not self.dy == 1:
+            for i in range(self.dy - 1):
+                seq_h = numpy.arange(1, kh) if i == 0 else numpy.dstack((seq_h, numpy.arange(1, kh)))
+            seq_h = seq_h.reshape((self.dy - 1) * (kh - 1))
+            W = numpy.insert(W, seq_h, numpy.zeros(kw), axis=2)
+        if not self.dx == 1:
+            for i in range(self.dx - 1):
+                seq_w = numpy.arange(1, kw) if i == 0 else numpy.dstack((seq_w, numpy.arange(1, kw)))
+            seq_w = seq_w.reshape((self.dx - 1) * (kw - 1))
+            W = numpy.insert(W, seq_w, 0, axis=3)
 
         gW = numpy.tensordot(
             gy, self.col, ((0, 2, 3), (0, 4, 5))).astype(W.dtype)
