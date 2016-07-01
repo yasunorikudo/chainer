@@ -81,10 +81,11 @@ class DilatedConvolution2DFunction(function.Function):
 
         out_c, _, kh, kw = W.shape
         n, c, h, w = x.shape
+        dkh, dkw = kh + (kh - 1) * (self.dy - 1), kw + (kw - 1) * (self.dx - 1)
 
-        out_h = conv.get_conv_outsize(h, kh, self.sy, self.ph,
+        out_h = conv.get_conv_outsize(h, dkh, self.sy, self.ph,
                                       cover_all=self.cover_all)
-        out_w = conv.get_conv_outsize(w, kw, self.sx, self.pw,
+        out_w = conv.get_conv_outsize(w, dkw, self.sx, self.pw,
                                       cover_all=self.cover_all)
 
         y = cuda.cupy.empty((n, out_c, out_h, out_w), dtype=x.dtype)
@@ -130,8 +131,8 @@ class DilatedConvolution2DFunction(function.Function):
         else:
             # Implementation using im2col
             self.col = conv.im2col_gpu(
-                x, kh, kw, self.sy, self.sx, self.ph, self.pw,
-                cover_all=self.cover_all)
+                x, dkh, dkw, self.sy, self.sx, self.ph, self.pw,
+                cover_all=self.cover_all)[:, :, 0:dkh:self.dy, 0:dkw:self.dx, :, :]
             W_mat = W.reshape(out_c, -1)
             col_mats = self.col.reshape(n, -1, out_h * out_w)
             y_mats = y.reshape(n, out_c, -1)
