@@ -88,43 +88,50 @@ class DilatedConvolution2DFunction(function.Function):
         out_w = conv.get_conv_outsize(w, dkw, self.sx, self.pw,
                                       cover_all=self.cover_all)
 
-        y = cuda.cupy.empty((n, out_c, out_h, out_w), dtype=x.dtype)
+        y = cuda.cupy.zeros((n, out_c, out_h, out_w), dtype=x.dtype)
         if (not self.cover_all and cuda.cudnn_enabled and self.use_cudnn and
                 _check_cudnn_acceptable_type(x.dtype, W.dtype)):
-            x = cuda.cupy.ascontiguousarray(x)
-            W = cuda.cupy.ascontiguousarray(W)
+
+            pad_x = cuda.cupy.zeros((n, c, h + 2 * self.ph, w + 2 * self.pw),
+                                    dtype=x.dtype)
+            pad_x[:, :, self.ph:self.ph + h, self.pw:self.pw + w] = x
+
+            for j in moves.range(kh):
+                for i in moves.range(kw):
+                    xji = cuda.cupy.ascontiguousarray(
+                        pad_x[:, :,
+                        j * self.dy:j * self.dy + h + 2 * self.ph - dkh + 1,
+                        i * self.dx:i * self.dx + w + 2 * self.pw - dkw + 1])
+                    Wji = cuda.cupy.ascontiguousarray(W[:, :, j:j + 1, i:i + 1])
+
+                    if i == 0 and j == 0:
+                        handle = cudnn.get_handle()
+                        x_desc = cudnn.create_tensor_descriptor(xji)
+                        y_desc = cudnn.create_tensor_descriptor(y)
+                        filter_desc = cudnn.create_filter_descriptor(Wji)
+                        conv_desc = cudnn.create_convolution_descriptor(
+                            (0, 0), (self.sy, self.sx))
+
+                        workspace_size = cuda.get_max_workspace_size()
+                        workspace = cuda.cupy.empty((workspace_size,), dtype='b')
+                        algo = libcudnn.getConvolutionForwardAlgorithm(
+                            handle, x_desc.value, filter_desc.value,
+                            conv_desc.value, y_desc.value, _fwd_pref,
+                            workspace_size)
+
+                        oz_dtype = 'd' if x.dtype == 'd' else 'f'
+                        one = numpy.array(1, dtype=oz_dtype).ctypes
+
+                    libcudnn.convolutionForward(
+                        handle, one.data, x_desc.value, xji.data.ptr,
+                        filter_desc.value, Wji.data.ptr, conv_desc.value,
+                        algo, workspace.data.ptr, workspace_size, one.data,
+                        y_desc.value, y.data.ptr)
+
             if b is not None:
                 b = cuda.cupy.ascontiguousarray(b)
-
-            handle = cudnn.get_handle()
-            x_desc = cudnn.create_tensor_descriptor(x)
-            y_desc = cudnn.create_tensor_descriptor(y)
-
-            self.filter_desc = cudnn.create_filter_descriptor(W)
-            self.conv_desc = cudnn.create_convolution_descriptor(
-                (self.ph, self.pw), (self.sy, self.sx))
-            if b is not None:
                 self.bias_desc = cudnn.create_tensor_descriptor(
                     b[None, :, None, None])
-
-            workspace_size = cuda.get_max_workspace_size()
-            workspace = cuda.cupy.empty((workspace_size,), dtype='b')
-            algo = libcudnn.getConvolutionForwardAlgorithm(
-                handle, x_desc.value, self.filter_desc.value,
-                self.conv_desc.value, y_desc.value, _fwd_pref,
-                workspace_size)
-
-            oz_dtype = 'd' if x.dtype == 'd' else 'f'
-            one = numpy.array(1, dtype=oz_dtype).ctypes
-            zero = numpy.array(0, dtype=oz_dtype).ctypes
-            libcudnn.convolutionForward(
-                handle, one.data, x_desc.value, x.data.ptr,
-                self.filter_desc.value, W.data.ptr, self.conv_desc.value,
-                algo, workspace.data.ptr, workspace_size, zero.data,
-                y_desc.value, y.data.ptr)
-
-            # TODO(beam2d): Support unshared bias
-            if b is not None:
                 cudnn.add_tensor(
                     handle, one.data, self.bias_desc.value, b.data.ptr,
                     one.data, y_desc.value, y.data.ptr)
