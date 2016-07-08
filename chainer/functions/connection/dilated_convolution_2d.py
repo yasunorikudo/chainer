@@ -108,15 +108,15 @@ class DilatedConvolution2DFunction(function.Function):
                         handle = cudnn.get_handle()
                         x_desc = cudnn.create_tensor_descriptor(xji)
                         y_desc = cudnn.create_tensor_descriptor(y)
-                        filter_desc = cudnn.create_filter_descriptor(Wji)
-                        conv_desc = cudnn.create_convolution_descriptor(
+                        self.filter_desc = cudnn.create_filter_descriptor(Wji)
+                        self.conv_desc = cudnn.create_convolution_descriptor(
                             (0, 0), (self.sy, self.sx))
 
                         workspace_size = cuda.get_max_workspace_size()
                         workspace = cuda.cupy.empty((workspace_size,), dtype='b')
                         algo = libcudnn.getConvolutionForwardAlgorithm(
-                            handle, x_desc.value, filter_desc.value,
-                            conv_desc.value, y_desc.value, _fwd_pref,
+                            handle, x_desc.value, self.filter_desc.value,
+                            self.conv_desc.value, y_desc.value, _fwd_pref,
                             workspace_size)
 
                         oz_dtype = 'd' if x.dtype == 'd' else 'f'
@@ -124,7 +124,7 @@ class DilatedConvolution2DFunction(function.Function):
 
                     libcudnn.convolutionForward(
                         handle, one.data, x_desc.value, xji.data.ptr,
-                        filter_desc.value, Wji.data.ptr, conv_desc.value,
+                        self.filter_desc.value, Wji.data.ptr, self.conv_desc.value,
                         algo, workspace.data.ptr, workspace_size, one.data,
                         y_desc.value, y.data.ptr)
 
@@ -261,8 +261,19 @@ class DilatedConvolution2DFunction(function.Function):
             for i in moves.range(n):
                 gcol_mats[i] = cuda.cupy.dot(W_mat.T, gy_mats[i])
 
-            gx = conv.col2im_gpu(
-                gcol, self.sy, self.sx, self.ph, self.pw, h, w)
+            # dilate col2im_gpu
+            # TODO(yasunorikudo): Write cuda.elementwise
+            img = cuda.cupy.zeros(
+                (n, c, h + 2 * self.ph + self.sy - 1, w + 2 * self.pw + self.sx - 1),
+                dtype=gcol.dtype)
+            for j in moves.range(kh):
+                q = j * self.dy
+                q_lim = q + self.sy * out_h
+                for i in moves.range(kw):
+                    p = i * self.dx
+                    p_lim = p + self.sx * out_w
+                    img[:, :, q:q_lim:self.sy, p:p_lim:self.sx] += gcol[:, :, j, i, :, :]
+            gx = img[:, :, self.ph:h + self.ph, self.pw:w + self.pw]
 
             if b is not None:
                 gb = gy.sum(axis=(0, 2, 3))
