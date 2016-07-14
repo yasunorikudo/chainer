@@ -31,10 +31,10 @@ def _pair(x):
 
 class DilatedConvolution2DFunction(function.Function):
 
-    def __init__(self, dilate=1, stride=1, pad=0, use_cudnn=True, cover_all=False):
-        self.dy, self.dx = _pair(dilate)
+    def __init__(self, stride=1, pad=0, use_cudnn=True, cover_all=False, dilate=1):
         self.sy, self.sx = _pair(stride)
         self.ph, self.pw = _pair(pad)
+        self.dy, self.dx = _pair(dilate)
         self.use_cudnn = use_cudnn
         self.cover_all = cover_all
 
@@ -269,8 +269,8 @@ class DilatedConvolution2DFunction(function.Function):
             return gx, gW, gb
 
 
-def dilated_convolution_2d(x, W, b=None, dilate=1, stride=1, pad=0, use_cudnn=True,
-                   cover_all=False):
+def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
+                   cover_all=False, dilate=1):
     """Two-dimensional convolution function.
 
     This is an implementation of two-dimensional convolution in ConvNets.
@@ -330,7 +330,7 @@ def dilated_convolution_2d(x, W, b=None, dilate=1, stride=1, pad=0, use_cudnn=Tr
     .. seealso:: :class:`Convolution2D`
 
     """
-    func = DilatedConvolution2DFunction(dilate, stride, pad, use_cudnn, cover_all)
+    func = DilatedConvolution2DFunction(stride, pad, use_cudnn, cover_all, dilate)
     if b is None:
         return func(x, W)
     else:
