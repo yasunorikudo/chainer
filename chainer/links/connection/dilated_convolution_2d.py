@@ -80,7 +80,7 @@ class DilatedConvolution2D(link.Link):
 
         """
         return dilated_convolution_2d.dilated_convolution_2d(
-            x, self.W, self.b, self.stride, self.pad, self.use_cudnn, self.dilate)
+            x, self.W, self.b, self.stride, self.pad, self.use_cudnn, dilate=self.dilate)
 
 
 def _pair(x):
