@@ -85,35 +85,49 @@ def col2im_cpu(col, sy, sx, ph, pw, h, w, dy=1, dx=1):
     return img[:, :, ph:h + ph, pw:w + pw]
 
 
-def col2im_gpu(col, sy, sx, ph, pw, h, w):
+def col2im_gpu(col, sy, sx, ph, pw, h, w, dy=1, dx=1):
     n, c, kh, kw, out_h, out_w = col.shape
 
-    img = cuda.cupy.empty((n, c, h, w), dtype=col.dtype)
-    cuda.elementwise(
-        'raw T col, int32 h, int32 w, int32 out_h, int32 out_w,'
-        'int32 kh, int32 kw, int32 sy, int32 sx, int32 ph, int32 pw',
-        'T img',
-        '''
-           int c0 = i / (h * w);
-           int y  = i / w % h + ph;
-           int x  = i % w + pw;
+    if dy == 1 and dx == 1:
+        img = cuda.cupy.empty((n, c, h, w), dtype=col.dtype)
+        cuda.elementwise(
+            'raw T col, int32 h, int32 w, int32 out_h, int32 out_w,'
+            'int32 kh, int32 kw, int32 sy, int32 sx, int32 ph, int32 pw',
+            'T img',
+            '''
+               int c0 = i / (h * w);
+               int y  = i / w % h + ph;
+               int x  = i % w + pw;
 
-           int out_y_0 = max(0,     (y - kh + sy) / sy);
-           int out_y_1 = min(out_h, (y      + sy) / sy);
-           int out_x_0 = max(0,     (x - kw + sx) / sx);
-           int out_x_1 = min(out_w, (x      + sx) / sx);
+               int out_y_0 = max(0,     (y - kh + sy) / sy);
+               int out_y_1 = min(out_h, (y      + sy) / sy);
+               int out_x_0 = max(0,     (x - kw + sx) / sx);
+               int out_x_1 = min(out_w, (x      + sx) / sx);
 
-           T val = 0;
-           for (int out_y = out_y_0; out_y < out_y_1; ++out_y) {
-             int ky = y - out_y * sy;
-             for (int out_x = out_x_0; out_x < out_x_1; ++out_x) {
-               int kx = x - out_x * sx;
-               int k = out_y + out_h * (kx + kw * (ky + kh * c0));
-               val = val + col[out_x + out_w * k];
-             }
-           }
-           img = val;
-        ''',
-        'col2im')(col.reduced_view(),
-                  h, w, out_h, out_w, kh, kw, sy, sx, ph, pw, img)
-    return img
+               T val = 0;
+               for (int out_y = out_y_0; out_y < out_y_1; ++out_y) {
+                 int ky = y - out_y * sy;
+                 for (int out_x = out_x_0; out_x < out_x_1; ++out_x) {
+                   int kx = x - out_x * sx;
+                   int k = out_y + out_h * (kx + kw * (ky + kh * c0));
+                   val = val + col[out_x + out_w * k];
+                 }
+               }
+               img = val;
+            ''',
+            'col2im')(col.reduced_view(),
+                      h, w, out_h, out_w, kh, kw, sy, sx, ph, pw, img)
+        return img
+
+    else:
+        # TODO(yasunorikudo): Use cuda.elementwise
+        dkh, dkw = kh + (kh - 1) * (dy - 1), kw + (kw - 1) * (dx - 1)
+        img = cuda.cupy.zeros((n, c, h + 2 * ph + sy - 1, w + 2 * pw + sx - 1),
+                          dtype=col.dtype)
+        for j in six.moves.range(0, dkh, dy):
+            j_lim = j + sy * out_h
+            for i in six.moves.range(0, dkw, dx):
+                i_lim = i + sx * out_w
+                img[:, :, j:j_lim:sy, i:i_lim:sx] += col[:, :, j / dy, i / dx, :, :]
+
+        return img[:, :, ph:h + ph, pw:w + pw]
