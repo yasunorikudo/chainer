@@ -176,54 +176,86 @@ class DilatedConvolution2DFunction(function.Function):
         _, out_c, out_h, out_w = gy.shape
         n, c, h, w = x.shape
         kh, kw = W.shape[2:]
+        dkh, dkw = kh + (kh - 1) * (self.dy - 1), kw + (kw - 1) * (self.dx - 1)
 
         gW = cuda.cupy.empty_like(W)
         if (not self.cover_all and cuda.cudnn_enabled and self.use_cudnn and
                 _check_cudnn_acceptable_type(x.dtype, W.dtype)):
-            x = cuda.cupy.ascontiguousarray(x)
-            W = cuda.cupy.ascontiguousarray(W)
-            gy = cuda.cupy.ascontiguousarray(gy)
 
-            handle = cudnn.get_handle()
-            x_desc = cudnn.create_tensor_descriptor(x)
-            gy_desc = cudnn.create_tensor_descriptor(gy)
-            oz_dtype = 'd' if x.dtype == 'd' else 'f'
-            one = numpy.array(1, dtype=oz_dtype).ctypes
-            zero = numpy.array(0, dtype=oz_dtype).ctypes
-            gx = cuda.cupy.empty_like(x)
+            pad_x = cuda.cupy.zeros((n, c, h + 2 * self.ph, w + 2 * self.pw),
+                                    dtype=x.dtype)
+            pad_x[:, :, self.ph:self.ph + h, self.pw:self.pw + w] = x
 
-            if _cudnn_version >= 4000:
-                workspace_size = cuda.get_max_workspace_size()
-                workspace = cuda.cupy.empty((workspace_size,), dtype='b')
+            ph_gy = (h + dkh - out_h - 1) / 2
+            pw_gy = (w + dkw - out_w - 1) / 2
 
-                algo = libcudnn.getConvolutionBackwardFilterAlgorithm(
-                    handle, x_desc.value, gy_desc.value,
-                    self.conv_desc.value, self.filter_desc.value,
-                    _bwd_filter_pref, workspace_size)
-                libcudnn.convolutionBackwardFilter_v3(
-                    handle, one.data, x_desc.value, x.data.ptr,
-                    gy_desc.value, gy.data.ptr, self.conv_desc.value,
-                    algo, workspace.data.ptr, workspace_size,
-                    zero.data, self.filter_desc.value, gW.data.ptr)
+            pad_gy = cuda.cupy.zeros((n, out_c, out_h + 2 * ph_gy, out_w + 2 * pw_gy),
+                                     dtype=x.dtype)
+            pad_gy[:, :, ph_gy:ph_gy + out_h, pw_gy:pw_gy + out_w] = gy
 
-                algo = libcudnn.getConvolutionBackwardDataAlgorithm(
-                    handle, self.filter_desc.value, gy_desc.value,
-                    self.conv_desc.value, x_desc.value, _bwd_data_pref,
-                    workspace_size)
-                libcudnn.convolutionBackwardData_v3(
-                    handle, one.data, self.filter_desc.value, W.data.ptr,
-                    gy_desc.value, gy.data.ptr, self.conv_desc.value,
-                    algo, workspace.data.ptr, workspace_size,
-                    zero.data, x_desc.value, gx.data.ptr)
-            else:
-                libcudnn.convolutionBackwardFilter_v2(
-                    handle, one.data, x_desc.value, x.data.ptr,
-                    gy_desc.value, gy.data.ptr, self.conv_desc.value,
-                    zero.data, self.filter_desc.value, gW.data.ptr)
-                libcudnn.convolutionBackwardData_v2(
-                    handle, one.data, self.filter_desc.value, W.data.ptr,
-                    gy_desc.value, gy.data.ptr, self.conv_desc.value,
-                    zero.data, x_desc.value, gx.data.ptr)
+            for j in moves.range(kh):
+                for i in moves.range(kw):
+                    xji = cuda.cupy.ascontiguousarray(
+                        pad_x[:, :,
+                              j * self.dy:j * self.dy + h + 2 * self.ph - dkh + 1,
+                              i * self.dx:i * self.dx + w + 2 * self.pw - dkw + 1])
+                    gyji = cuda.cupy.ascontiguousarray(
+                        pad_gy[:, :,
+                               j * self.dy:j * self.dy + h,
+                               i * self.dx:i * self.dx + w])
+                    Wji = cuda.cupy.ascontiguousarray(
+                        W[:, :, -1::-1, -1::-1][:, :, j:j + 1, i:i + 1])
+
+                    if i == 0 and j == 0:
+                        x = cuda.cupy.ascontiguousarray(x)
+                        gy = cuda.cupy.ascontiguousarray(gy)
+
+                        handle = cudnn.get_handle()
+                        x_desc = cudnn.create_tensor_descriptor(x)
+                        xji_desc = cudnn.create_tensor_descriptor(xji)
+                        gy_desc = cudnn.create_tensor_descriptor(gy)
+                        gyji_desc = cudnn.create_tensor_descriptor(gyji)
+
+                        oz_dtype = 'd' if x.dtype == 'd' else 'f'
+                        one = numpy.array(1, dtype=oz_dtype).ctypes
+                        zero = numpy.array(0, dtype=oz_dtype).ctypes
+                        gx = cuda.cupy.zeros_like(x)
+
+                        if _cudnn_version >= 4000:
+                            workspace_size = cuda.get_max_workspace_size()
+                            workspace = cuda.cupy.empty((workspace_size,), dtype='b')
+
+                            algo_filter = libcudnn.getConvolutionBackwardFilterAlgorithm(
+                                handle, xji_desc.value, gy_desc.value,
+                                self.conv_desc.value, self.filter_desc.value,
+                                _bwd_filter_pref, workspace_size)
+                            algo_data = libcudnn.getConvolutionBackwardDataAlgorithm(
+                                handle, self.filter_desc.value, gyji_desc.value,
+                                self.conv_desc.value, x_desc.value, _bwd_data_pref,
+                                workspace_size)
+
+                    if _cudnn_version >= 4000:
+                        libcudnn.convolutionBackwardFilter_v3(
+                            handle, one.data, xji_desc.value, xji.data.ptr,
+                            gy_desc.value, gy.data.ptr, self.conv_desc.value,
+                            algo_filter, workspace.data.ptr, workspace_size,
+                            zero.data, self.filter_desc.value,
+                            gW[:, :, j:j + 1, i:i + 1].data.ptr)
+                        libcudnn.convolutionBackwardData_v3(
+                            handle, one.data, self.filter_desc.value, Wji.data.ptr,
+                            gyji_desc.value, gyji.data.ptr, self.conv_desc.value,
+                            algo_data, workspace.data.ptr, workspace_size,
+                            one.data, x_desc.value, gx.data.ptr)
+                    else:
+                        libcudnn.convolutionBackwardFilter_v2(
+                            handle, one.data, xji_desc.value, xji.data.ptr,
+                            gy_desc.value, gy.data.ptr, self.conv_desc.value,
+                            zero.data, self.filter_desc.value,
+                            gW[:, :, j:j + 1, i:i + 1].data.ptr)
+                        libcudnn.convolutionBackwardData_v2(
+                            handle, one.data, self.filter_desc.value, Wji.data.ptr,
+                            gyji_desc.value, gyji.data.ptr, self.conv_desc.value,
+                            one.data, x_desc.value, gx.data.ptr)
 
             if b is not None:
                 gb = cuda.cupy.empty_like(b)
