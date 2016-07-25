@@ -186,12 +186,17 @@ class DilatedConvolution2DFunction(function.Function):
                                     dtype=x.dtype)
             pad_x[:, :, self.ph:self.ph + h, self.pw:self.pw + w] = x
 
-            ph_gy = (h + dkh - out_h - 1) / 2
-            pw_gy = (w + dkw - out_w - 1) / 2
-
-            pad_gy = cuda.cupy.zeros((n, out_c, out_h + 2 * ph_gy, out_w + 2 * pw_gy),
+            out_h2 = out_h + (out_h - 1) * (self.sy - 1)
+            out_w2 = out_w + (out_w - 1) * (self.sx - 1)
+            ph_gy = (h + dkh - out_h2 - 1) / 2
+            pw_gy = (w + dkw - out_w2 - 1) / 2
+            pad_gy = cuda.cupy.zeros((n, out_c, h + dkh - 1, w + dkw - 1),
                                      dtype=x.dtype)
-            pad_gy[:, :, ph_gy:ph_gy + out_h, pw_gy:pw_gy + out_w] = gy
+            pad_gy[:, :, ph_gy:ph_gy + out_h2:self.sy, pw_gy:pw_gy + out_w2:self.sx] = gy
+            if h + dkh - out_h2 - 1 < 0:
+                pad_gy2 = cuda.cupy.zeros((n, out_c, out_h2, out_w2), dtype=x.dtype)
+                pad_gy2[:, :, 0:out_h2:self.sy, 0:out_w2:self.sx] = gy
+                pad_gy = pad_gy2[:, :, - ph_gy:- ph_gy + h + dkh - 1, - pw_gy:- pw_gy + w + dkw - 1]
 
             for j in moves.range(kh):
                 for i in moves.range(kw):
@@ -215,11 +220,13 @@ class DilatedConvolution2DFunction(function.Function):
                         xji_desc = cudnn.create_tensor_descriptor(xji)
                         gy_desc = cudnn.create_tensor_descriptor(gy)
                         gyji_desc = cudnn.create_tensor_descriptor(gyji)
+                        conv_desc_data = cudnn.create_convolution_descriptor((0, 0), (1, 1))
 
                         oz_dtype = 'd' if x.dtype == 'd' else 'f'
                         one = numpy.array(1, dtype=oz_dtype).ctypes
                         zero = numpy.array(0, dtype=oz_dtype).ctypes
                         gx = cuda.cupy.zeros_like(x)
+                        gWji = cuda.cupy.empty((out_c, c, 1, 1), dtype=W.dtype)
 
                         if _cudnn_version >= 4000:
                             workspace_size = cuda.get_max_workspace_size()
@@ -231,7 +238,7 @@ class DilatedConvolution2DFunction(function.Function):
                                 _bwd_filter_pref, workspace_size)
                             algo_data = libcudnn.getConvolutionBackwardDataAlgorithm(
                                 handle, self.filter_desc.value, gyji_desc.value,
-                                self.conv_desc.value, x_desc.value, _bwd_data_pref,
+                                conv_desc_data.value, x_desc.value, _bwd_data_pref,
                                 workspace_size)
 
                     if _cudnn_version >= 4000:
@@ -239,23 +246,22 @@ class DilatedConvolution2DFunction(function.Function):
                             handle, one.data, xji_desc.value, xji.data.ptr,
                             gy_desc.value, gy.data.ptr, self.conv_desc.value,
                             algo_filter, workspace.data.ptr, workspace_size,
-                            zero.data, self.filter_desc.value,
-                            gW[:, :, j:j + 1, i:i + 1].data.ptr)
+                            zero.data, self.filter_desc.value, gWji.data.ptr)
                         libcudnn.convolutionBackwardData_v3(
                             handle, one.data, self.filter_desc.value, Wji.data.ptr,
-                            gyji_desc.value, gyji.data.ptr, self.conv_desc.value,
+                            gyji_desc.value, gyji.data.ptr, conv_desc_data.value,
                             algo_data, workspace.data.ptr, workspace_size,
                             one.data, x_desc.value, gx.data.ptr)
                     else:
                         libcudnn.convolutionBackwardFilter_v2(
                             handle, one.data, xji_desc.value, xji.data.ptr,
                             gy_desc.value, gy.data.ptr, self.conv_desc.value,
-                            zero.data, self.filter_desc.value,
-                            gW[:, :, j:j + 1, i:i + 1].data.ptr)
+                            zero.data, self.filter_desc.value, gWji.data.ptr)
                         libcudnn.convolutionBackwardData_v2(
                             handle, one.data, self.filter_desc.value, Wji.data.ptr,
-                            gyji_desc.value, gyji.data.ptr, self.conv_desc.value,
+                            gyji_desc.value, gyji.data.ptr, conv_desc_data.value,
                             one.data, x_desc.value, gx.data.ptr)
+                    gW[:, :, j:j + 1, i:i + 1] = gWji
 
             if b is not None:
                 gb = cuda.cupy.empty_like(b)
