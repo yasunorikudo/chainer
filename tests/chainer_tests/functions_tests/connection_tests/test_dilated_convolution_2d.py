@@ -26,7 +26,8 @@ class TestDilatedConvolution2DFunction(unittest.TestCase):
         out_channels = 2
         kh, kw = (3, 3)
         self.stride = 2
-        self.pad = 1
+        self.pad = 2
+        self.dilate = 2
         self.use_cudnn = use_cudnn
         self.W = numpy.random.normal(
             0, numpy.sqrt(1. / (kh * kw * in_channels)),
@@ -60,14 +61,14 @@ class TestDilatedConvolution2DFunction(unittest.TestCase):
         b_cpu = None if nobias else chainer.Variable(self.b)
         y_cpu = functions.dilated_convolution_2d(
             x_cpu, W_cpu, b_cpu, stride=self.stride, pad=self.pad,
-            use_cudnn=self.use_cudnn, cover_all=self.cover_all)
+            use_cudnn=self.use_cudnn, cover_all=self.cover_all, dilate=self.dilate)
 
         x_gpu = chainer.Variable(cuda.to_gpu(self.x))
         W_gpu = chainer.Variable(cuda.to_gpu(self.W))
         b_gpu = None if nobias else chainer.Variable(cuda.to_gpu(self.b))
         y_gpu = functions.dilated_convolution_2d(
             x_gpu, W_gpu, b_gpu, stride=self.stride, pad=self.pad,
-            use_cudnn=self.use_cudnn, cover_all=self.cover_all)
+            use_cudnn=self.use_cudnn, cover_all=self.cover_all, dilate=self.dilate)
 
         gradient_check.assert_allclose(
             y_cpu.data, y_gpu.data.get(), **self.check_forward_options)
@@ -101,9 +102,10 @@ class TestDilatedConvolution2DFunction(unittest.TestCase):
         if b_data is not None:
             args = args + (b_data,)
 
+        print self.stride, self.pad, self.use_cudnn, self.cover_all, self.dilate, x_data.shape, W_data.shape, y_grad.shape
         gradient_check.check_backward(
             dilated_convolution_2d.DilatedConvolution2DFunction(
-                self.stride, self.pad, self.use_cudnn, self.cover_all),
+                self.stride, self.pad, self.use_cudnn, self.cover_all, self.dilate),
             args, y_grad, **self.check_backward_options)
 
     @condition.retry(3)
@@ -153,7 +155,8 @@ class TestDilatedConvolution2DCudnnCall(unittest.TestCase):
         out_channels = 2
         kh, kw = (3, 3)
         self.stride = 2
-        self.pad = 1
+        self.pad = 2
+        self.dilate = 2
         self.x = cuda.cupy.random.uniform(
             -1, 1, (2, 3, 4, 3)).astype(self.dtype)
         self.W = cuda.cupy.random.normal(
@@ -170,7 +173,7 @@ class TestDilatedConvolution2DCudnnCall(unittest.TestCase):
         W = chainer.Variable(self.W)
         return functions.dilated_convolution_2d(
             x, W, None, stride=self.stride, pad=self.pad,
-            use_cudnn=self.use_cudnn)
+            use_cudnn=self.use_cudnn, dilate=self.dilate)
 
     def test_call_cudnn_forward(self):
         with mock.patch('cupy.cudnn.cudnn.convolutionForward') as func:
