@@ -193,6 +193,7 @@ class DilatedConvolution2DFunction(function.Function):
             pad_gy = cuda.cupy.zeros((n, out_c, h + dkh - 1, w + dkw - 1),
                                      dtype=x.dtype)
             pad_gy[:, :, ph_gy:ph_gy + out_h2:self.sy, pw_gy:pw_gy + out_w2:self.sx] = gy
+            #TODO(yasunorikudo): Fix
             if h + dkh - out_h2 - 1 < 0:
                 pad_gy2 = cuda.cupy.zeros((n, out_c, out_h2, out_w2), dtype=x.dtype)
                 pad_gy2[:, :, 0:out_h2:self.sy, 0:out_w2:self.sx] = gy
