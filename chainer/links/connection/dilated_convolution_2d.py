@@ -7,10 +7,10 @@ from chainer import link
 
 class DilatedConvolution2D(link.Link):
 
-    """Two-dimensional convolutional layer.
+    """Two-dimensional dilated convolutional layer.
 
-    This link wraps the :func:`~chainer.functions.convolution_2d` function and
-    holds the filter weight and bias vector as parameters.
+    This link wraps the :func:`~chainer.functions.dilated_convolution_2d`
+    function and holds the filter weight and bias vector as parameters.
 
     Args:
         in_channels (int): Number of channels of input arrays.
@@ -21,6 +21,8 @@ class DilatedConvolution2D(link.Link):
             ``stride=s`` and ``stride=(s, s)`` are equivalent.
         pad (int or pair of ints): Spatial padding width for input arrays.
             ``pad=p`` and ``pad=(p, p)`` are equivalent.
+        dilate (int or pair of ints): Dilate width of filter applications.
+            ``dilate=d`` and ``dilate=(d, d)`` are equivalent.
         wscale (float): Scaling factor of the initial weight.
         bias (float): Initial bias value.
         nobias (bool): If ``True``, then this link does not use the bias term.
@@ -35,8 +37,8 @@ class DilatedConvolution2D(link.Link):
             ``cupy.ndarray`` and edits its value.
 
     .. seealso::
-       See :func:`chainer.functions.convolution_2d` for the definition of
-       two-dimensional convolution.
+       See :func:`chainer.functions.dilated_convolution_2d`
+       for the definition of two-dimensional dilated convolution.
 
     Attributes:
         W (~chainer.Variable): Weight parameter.
@@ -45,8 +47,8 @@ class DilatedConvolution2D(link.Link):
     """
 
     def __init__(self, in_channels, out_channels, ksize, stride=1, pad=0,
-                 wscale=1, bias=0, nobias=False, use_cudnn=True,
-                 initialW=None, initial_bias=None, dilate=1):
+                 dilate=1, wscale=1, bias=0, nobias=False, use_cudnn=True,
+                 initialW=None, initial_bias=None):
         kh, kw = _pair(ksize)
         self.stride = _pair(stride)
         self.pad = _pair(pad)
@@ -80,7 +82,7 @@ class DilatedConvolution2D(link.Link):
 
         """
         return dilated_convolution_2d.dilated_convolution_2d(
-            x, self.W, self.b, self.stride, self.pad, self.use_cudnn, dilate=self.dilate)
+            x, self.W, self.b, self.stride, self.pad, self.dilate, self.use_cudnn)
 
 
 def _pair(x):

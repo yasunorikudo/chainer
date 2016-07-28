@@ -31,7 +31,8 @@ def _pair(x):
 
 class DilatedConvolution2DFunction(function.Function):
 
-    def __init__(self, stride=1, pad=0, use_cudnn=True, cover_all=False, dilate=1):
+    def __init__(self, stride=1, pad=0, dilate=1,
+                 use_cudnn=True, cover_all=False):
         self.sy, self.sx = _pair(stride)
         self.ph, self.pw = _pair(pad)
         self.dy, self.dx = _pair(dilate)
@@ -297,11 +298,12 @@ class DilatedConvolution2DFunction(function.Function):
             return gx, gW, gb
 
 
-def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
-                   cover_all=False, dilate=1):
-    """Two-dimensional convolution function.
+def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, dilate=1,
+                           use_cudnn=True, cover_all=False):
+    """Two-dimensional dilated convolution function.
 
-    This is an implementation of two-dimensional convolution in ConvNets.
+    This is an implementation of two-dimensional dilated convolution
+    in ConvNets.
     It takes three variables: the input image ``x``, the filter weight ``W``,
     and the bias vector ``b``.
 
@@ -324,6 +326,8 @@ def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
             ``stride=s`` and ``stride=(s, s)`` are equivalent.
         pad (int or pair of ints): Spatial padding width for input arrays.
             ``pad=p`` and ``pad=(p, p)`` are equivalent.
+        dilate (int or pair of ints): Dilate width of filter applications.
+            ``dilate=d`` and ``dilate=(d, d)`` are equivalent.
         use_cudnn (bool): If ``True``, then this function uses cuDNN if
             available.
         cover_all (bool): If True, all spatial locations are convoluted into
@@ -333,9 +337,9 @@ def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
     Returns:
         ~chainer.Variable: Output variable.
 
-    The two-dimensional convolution function is defined as follows.
-    Then the ``Convolution2D`` function computes correlations between filters
-    and patches of size :math:`(k_H, k_W)` in ``x``.
+    The two-dimensional dilated convolution function is defined as follows.
+    Then the ``DilatedConvolution2D`` function computes correlations
+    between filters and patches of size :math:`(k_H, k_W)` in ``x``.
     Note that correlation here is equivalent to the inner product between
     expanded vectors.
     Patches are extracted at positions shifted by multiples of ``stride`` from
@@ -355,10 +359,10 @@ def dilated_convolution_2d(x, W, b=None, stride=1, pad=0, use_cudnn=True,
     If the bias vector is given, then it is added to all spatial locations of
     the output of convolution.
 
-    .. seealso:: :class:`Convolution2D`
+    .. seealso:: :class:`DilatedConvolution2D`
 
     """
-    func = DilatedConvolution2DFunction(stride, pad, use_cudnn, cover_all, dilate)
+    func = DilatedConvolution2DFunction(stride, pad, dilate, use_cudnn, cover_all)
     if b is None:
         return func(x, W)
     else:
