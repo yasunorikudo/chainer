@@ -81,10 +81,10 @@ class DilatedConvolution2DFunction(function.Function):
         n, c, h, w = x.shape
         dkh, dkw = kh + (kh - 1) * (self.dy - 1), kw + (kw - 1) * (self.dx - 1)
 
-        out_h = conv.get_conv_outsize(h, dkh, self.sy, self.ph,
-                                      cover_all=self.cover_all)
-        out_w = conv.get_conv_outsize(w, dkw, self.sx, self.pw,
-                                      cover_all=self.cover_all)
+        out_h = conv.get_conv_outsize(h, kh, self.sy, self.ph,
+                                      cover_all=self.cover_all, d=self.dy)
+        out_w = conv.get_conv_outsize(w, kw, self.sx, self.pw,
+                                      cover_all=self.cover_all, d=self.dx)
 
         y = cuda.cupy.zeros((n, out_c, out_h, out_w), dtype=x.dtype)
         if (not self.cover_all and cuda.cudnn_enabled and self.use_cudnn and

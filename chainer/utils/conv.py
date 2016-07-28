@@ -4,11 +4,12 @@ import six
 from chainer import cuda
 
 
-def get_conv_outsize(size, k, s, p, cover_all=False):
+def get_conv_outsize(size, k, s, p, cover_all=False, d=1):
+    dk = k + (k - 1) * (d - 1)
     if cover_all:
-        return (size + p * 2 - k + s - 1) // s + 1
+        return (size + p * 2 - dk + s - 1) // s + 1
     else:
-        return (size + p * 2 - k) // s + 1
+        return (size + p * 2 - dk) // s + 1
 
 
 def get_deconv_outsize(size, k, s, p, cover_all=False):
@@ -21,8 +22,8 @@ def get_deconv_outsize(size, k, s, p, cover_all=False):
 def im2col_cpu(img, kh, kw, sy, sx, ph, pw, pval=0, cover_all=False, dy=1, dx=1):
     n, c, h, w = img.shape
     dkh, dkw = kh + (kh - 1) * (dy - 1), kw + (kw - 1) * (dx - 1)
-    out_h = get_conv_outsize(h, dkh, sy, ph, cover_all)
-    out_w = get_conv_outsize(w, dkw, sx, pw, cover_all)
+    out_h = get_conv_outsize(h, kh, sy, ph, cover_all, dy)
+    out_w = get_conv_outsize(w, kw, sx, pw, cover_all, dx)
 
     img = numpy.pad(img,
                     ((0, 0), (0, 0), (ph, ph + sy - 1), (pw, pw + sx - 1)),
@@ -41,8 +42,8 @@ def im2col_cpu(img, kh, kw, sy, sx, ph, pw, pval=0, cover_all=False, dy=1, dx=1)
 def im2col_gpu(img, kh, kw, sy, sx, ph, pw, cover_all=False, dy=1, dx=1):
     n, c, h, w = img.shape
     dkh, dkw = kh + (kh - 1) * (dy - 1), kw + (kw - 1) * (dx - 1)
-    out_h = get_conv_outsize(h, dkh, sy, ph, cover_all)
-    out_w = get_conv_outsize(w, dkw, sx, pw, cover_all)
+    out_h = get_conv_outsize(h, kh, sy, ph, cover_all, dy)
+    out_w = get_conv_outsize(w, kw, sx, pw, cover_all, dx)
 
     col = cuda.cupy.empty((n, c, kh, kw, out_h, out_w), dtype=img.dtype)
     cuda.elementwise(
